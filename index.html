@@ -1,0 +1,761 @@
+<!DOCTYPE html>
+<html lang="en">
+
+  <head>
+    <meta charset="UTF-8">
+    <title>拓印肌理</title>
+    
+
+  </head>
+    
+  <body>
+  <!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=600, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Pattern Generator - Instant Sync Edition</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/p5.js"></script>
+    <script>
+        let cvReady = false;
+        let cvError = false;
+        
+        function onOpenCvReady() {
+            console.log("OpenCV script loaded. Waiting for runtime...");
+            if (typeof cv !== 'undefined') {
+                if (typeof Promise !== 'undefined' && cv instanceof Promise) {
+                    cv.then((target) => { 
+                        window.cv = target; 
+                        initCv(); 
+                    }).catch(e => { console.error(e); cvError = true; updateErrorUI(); });
+                } else if (typeof cv.then === 'function') {
+                    cv.then((target) => { 
+                        window.cv = target; 
+                        initCv(); 
+                    }).catch(e => { console.error(e); cvError = true; updateErrorUI(); });
+                } else if (cv.getBuildInformation) {
+                    initCv();
+                } else {
+                    cv.onRuntimeInitialized = () => { initCv(); };
+                }
+            } else {
+                cvError = true;
+                console.error("cv is undefined after script load.");
+                updateErrorUI();
+            }
+        }
+
+        function initCv() {
+            console.log("OpenCV Runtime Fully Initialized.");
+            cvReady = true;
+            if (typeof checkAndProcessImage === 'function') checkAndProcessImage();
+        }
+
+        function onOpenCvError() {
+            cvError = true;
+            console.error("Failed to load OpenCV.js from external CDN.");
+            updateErrorUI();
+        }
+
+        function updateErrorUI() {
+            let label = document.getElementById('file-name-display');
+            if (label && !document.getElementById('imgInput').value) {
+                label.innerHTML = "OpenCV加载失败(请检查网络/刷新)";
+            }
+        }
+    </script>
+    <script async src="https://docs.opencv.org/4.5.4/opencv.js" onload="onOpenCvReady()" onerror="onOpenCvError()"></script>
+    <style>
+        * { 
+            -webkit-box-sizing: border-box; 
+            -moz-box-sizing: border-box;
+            box-sizing: border-box; 
+            outline: none; 
+        }
+        body { 
+            background: #cccccc; color: #999; 
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; 
+            margin: 0; 
+            display: -webkit-box; display: -webkit-flex; display: -ms-flexbox; display: flex; 
+            -webkit-box-align: center; -webkit-align-items: center; -ms-flex-align: center; align-items: center; 
+            -webkit-box-pack: center; -webkit-justify-content: center; -ms-flex-pack: center; justify-content: center; 
+            min-height: 100vh; padding: 30px; 
+        }
+        
+        .main-container { 
+            display: -webkit-box; display: -webkit-flex; display: -ms-flexbox; display: flex; 
+            opacity: 0; 
+            -webkit-transition: opacity 0.4s; transition: opacity 0.4s; 
+        }
+        .main-container > * + * { margin-left: 80px; } 
+        .main-container.ready { opacity: 1; }
+        
+        #canvas-container { line-height: 0; background: #ffffff; } 
+        
+        .side-panel { 
+            width: 300px; height: 800px; 
+            display: -webkit-box; display: -webkit-flex; display: -ms-flexbox; display: flex; 
+            -webkit-box-orient: vertical; -webkit-box-direction: normal; 
+            -webkit-flex-direction: column; -ms-flex-direction: column; flex-direction: column; 
+        }
+        .side-panel > * + * { margin-top: 15px; }
+
+        #grid-preview-box { width: 100%; height: 180px; background: #111; position: relative; overflow: hidden; border: 1px solid #333; }
+        
+        .controls { 
+            display: -webkit-box; display: -webkit-flex; display: -ms-flexbox; display: flex; 
+            -webkit-box-orient: vertical; -webkit-box-direction: normal; 
+            -webkit-flex-direction: column; -ms-flex-direction: column; flex-direction: column; 
+            margin-top: 30px !important; 
+        }
+        .controls > * + * { margin-top: 10px; }
+
+        .control-group { 
+            display: -webkit-box; display: -webkit-flex; display: -ms-flexbox; display: flex; 
+            -webkit-box-orient: vertical; -webkit-box-direction: normal; 
+            -webkit-flex-direction: column; -ms-flex-direction: column; flex-direction: column; 
+        }
+        .control-group > * + * { margin-top: 4px; }
+
+        .label-row, .control-group label { 
+            display: -webkit-box; display: -webkit-flex; display: -ms-flexbox; display: flex; 
+            -webkit-box-pack: justify; -webkit-justify-content: space-between; -ms-flex-pack: justify; justify-content: space-between; 
+            -webkit-box-align: center; -webkit-align-items: center; -ms-flex-align: center; align-items: center; 
+            margin-bottom: 2px; width: 100%;
+        }
+        .label-text, label { font-size: 10px; font-weight: bold; color: #555; text-transform: uppercase; }
+        .val-display { color: #555; font-family: "SF Mono", "Roboto Mono", monospace; font-size: 11px; font-weight: bold; }
+
+        .color-ui-wrap { 
+            display: -webkit-box; display: -webkit-flex; display: -ms-flexbox; display: flex; 
+            -webkit-box-align: center; -webkit-align-items: center; -ms-flex-align: center; align-items: center; 
+            font-size: 10px; color: #555; font-weight: bold; 
+        }
+        .color-ui-wrap > * + * { margin-left: 8px; }
+
+        .color-picker-custom { 
+            -webkit-appearance: none; -moz-appearance: none; appearance: none; 
+            width: 18px; height: 18px; border: none; border-radius: 50%; cursor: pointer; 
+            background: none; padding: 0; overflow: hidden;
+        }
+        .color-picker-custom::-webkit-color-swatch-wrapper { padding: 0; }
+        .color-picker-custom::-webkit-color-swatch { border: none; border-radius: 50%; }
+        .color-picker-custom::-moz-color-swatch { border: none; border-radius: 50%; }
+
+        .custom-upload-box { 
+            width: 100%; height: 38px; cursor: pointer; background: #000; border: 1px solid #333; 
+            font-size: 11px; 
+            display: -webkit-box; display: -webkit-flex; display: -ms-flexbox; display: flex; 
+            -webkit-box-align: center; -webkit-align-items: center; -ms-flex-align: center; align-items: center; 
+            -webkit-box-pack: center; -webkit-justify-content: center; -ms-flex-pack: center; justify-content: center; 
+            position: relative; color: #aaa; 
+        }
+        #clear-img { color: #555; font-size: 16px; position: absolute; right: 12px; cursor: pointer; display: none; }
+
+        select { 
+            -webkit-appearance: none; -moz-appearance: none; appearance: none; 
+            background: #000; border: 1px solid #333; 
+            color: #aaa; font-size: 11px; width: 100%; height: 38px; 
+            padding: 0 12px; border-radius: 0;
+            text-align: center; text-align-last: center; 
+        }
+        select option { text-align: center; }
+
+        /* =========================================
+           修改重点：滑轨填色、黑色无阴影按钮、缩小按钮尺寸
+           ========================================= */
+        input[type="range"] { 
+            -webkit-appearance: none; -moz-appearance: none; appearance: none; 
+            width: 100%; background: transparent; height: 24px; cursor: pointer; 
+            margin: 2px 0; touch-action: pan-y; 
+            --percent: 50%; /* JS 会动态接管此变量 */
+        }
+        
+        /* 动态轨道：左侧黑色，右侧白色 */
+        input[type="range"]::-webkit-slider-runnable-track { 
+            height: 3px; border-radius: 2px; 
+            background: linear-gradient(to right, #000000 var(--percent), #ffffff var(--percent));
+        }
+        /* 纯黑按钮、无阴影、缩小至 14px */
+        input[type="range"]::-webkit-slider-thumb { 
+            -webkit-appearance: none; height: 14px; width: 14px; 
+            background: #000000; /* 纯黑 */
+            border-radius: 50%; margin-top: -5.5px; 
+            box-shadow: none; /* 去除阴影 */
+            -webkit-transition: -webkit-transform 0.15s cubic-bezier(0.2, 0, 0.2, 1); 
+            transition: transform 0.15s cubic-bezier(0.2, 0, 0.2, 1); 
+            will-change: transform;
+        }
+        /* 滑动时按钮放大反馈 */
+        input[type="range"]:active::-webkit-slider-thumb {
+            -webkit-transform: scale(1); transform: scale(1);
+        }
+
+        /* Mozilla Firefox 兼容 */
+        input[type="range"]::-moz-range-track { 
+            height: 3px; border-radius: 2px; 
+            background: linear-gradient(to right, #000000 var(--percent), #ffffff var(--percent));
+        }
+        input[type="range"]::-moz-range-thumb { 
+            border: none; height: 14px; width: 14px; 
+            background: #000000; border-radius: 50%; 
+            box-shadow: none;
+            transition: transform 0.15s cubic-bezier(0.2, 0, 0.2, 1);
+        }
+        input[type="range"]:active::-moz-range-thumb {
+            transform: scale(1);
+        }
+
+        /* Edge / IE 兼容 */
+        input[type="range"]::-ms-track { width: 100%; cursor: pointer; background: transparent; border-color: transparent; color: transparent; height: 3px; }
+        input[type="range"]::-ms-fill-lower { background: #000000; border-radius: 2px; }
+        input[type="range"]::-ms-fill-upper { background: #ffffff; border-radius: 2px; }
+        input[type="range"]::-ms-thumb { border: none; height: 14px; width: 14px; background: #000000; border-radius: 50%; margin-top: 0; box-shadow: none; transition: transform 0.15s; }
+        input[type="range"]:active::-ms-thumb { transform: scale(1); }
+
+        button { padding: 13px; cursor: pointer; background: #333; color: #aaa; border: 1px solid #444; font-size: 11px; letter-spacing: 2px; text-transform: uppercase; -webkit-transition: 0.2s; transition: 0.2s; }
+        button:hover { background: #444; color: #fff; }
+        
+        .btn-group { 
+            display: -webkit-box; display: -webkit-flex; display: -ms-flexbox; display: flex; 
+            -webkit-box-orient: vertical; -webkit-box-direction: normal; 
+            -webkit-flex-direction: column; -ms-flex-direction: column; flex-direction: column; 
+            margin-top: auto; 
+        }
+        .btn-group > * + * { margin-top: 8px; }
+
+        .save-row { 
+            display: -webkit-box; display: -webkit-flex; display: -ms-flexbox; display: flex; 
+        }
+        .save-row > * + * { margin-left: 8px; }
+
+        .save-row button { 
+            -webkit-box-flex: 1; -webkit-flex: 1; -ms-flex: 1; flex: 1; 
+        }
+        .export-group button { background: #000; border-color: #222; }
+    </style>
+</head>
+<body>
+<div class="main-container" id="main-app-container">
+    <div id="canvas-container"></div>
+    <div class="side-panel">
+        <div id="grid-preview-box"></div>
+        <div class="controls">
+            <div class="control-group">
+                <div class="label-row">
+                    <div class="label-text">1. 图像源与色彩 SOURCE</div>
+                    <div class="color-ui-wrap">
+                        <span>FG</span><input type="color" id="dotColor" class="color-picker-custom" value="#000000">
+                        <span>BG</span><input type="color" id="bgColorPicker" class="color-picker-custom" value="#ffffff">
+                    </div>
+                </div>
+                <div class="custom-upload-box" onclick="document.getElementById('imgInput').click()">
+                    <input type="file" id="imgInput" accept="image/png, image/jpeg, image/webp" style="display:none">
+                    <span id="file-name-display">上传素材 (SUPPORT PNG)</span>
+                    <span id="clear-img" onclick="clearImage(event)">✕</span>
+                </div>
+            </div>
+            <div class="control-group"><label>2. 风格模式 STYLE</label><select id="styleSelect"><option value="charcoal">复古拓印 (RETRO PRINT)</option><option value="stipple">细腻颗粒 (STIPPLE)</option></select></div>
+            <div class="control-group"><label>3. 晕染范围 SPREAD <span class="val-display" id="val-viscosity">80</span></label><input type="range" id="viscosity" min="5" max="200" value="80"></div>
+            <div class="control-group"><label>4. 炭粉密度 DENSITY <span class="val-display" id="val-density">80</span></label><input type="range" id="density" min="1" max="100" value="80"></div>
+            <div class="control-group"><label>5. 识别阈值 THRESHOLD <span class="val-display" id="val-threshold">230</span></label><input type="range" id="threshold" min="0" max="255" value="230"></div>
+            <div class="control-group"><label>6. 边缘顺滑 SMOOTH <span class="val-display" id="val-randomness">15</span></label><input type="range" id="randomness" min="1" max="150" value="15"></div>
+            <div class="control-group"><label>7. 形体粗细 WEIGHT <span class="val-display" id="val-outlineWidth">0</span></label><input type="range" id="outlineWidth" min="-50" max="50" value="0"></div>
+            <div class="control-group"><label>8. 图形缩放 SCALE <span class="val-display" id="val-zoom">85%</span></label><input type="range" id="zoom" min="10" max="200" value="85"></div>
+        </div>
+        <div class="btn-group">
+            <div class="save-row"><button onclick="randomizeColors()">随机色彩</button></div>
+            <div class="save-row export-group">
+                <button onclick="exportFile('jpg')">JPG</button>
+                <button onclick="exportFile('png')">PNG</button>
+                <button onclick="exportFile('svg')">SVG</button>
+            </div>
+        </div>
+    </div>
+</div>
+<script>
+let sourceMat = null, basePolygons = [];
+let rawSourceImg = null, displayBuffer = null, tempCanvas = null;
+let pendingImageCanvas = null;
+let viscositySlider, densitySlider, zoomSlider, thresholdSlider, randomnessSlider, outlineSlider, styleSelect, dotColorPicker, bgColorPicker;
+let globalOffsetX = 0, globalOffsetY = 0;
+let needsRecalc = false, needsRedraw = false, isInteracting = false; 
+
+// 更新滑块左黑右白进度的核心函数
+function updateSliderFill(el) {
+    const min = parseFloat(el.min) || 0;
+    const max = parseFloat(el.max) || 100;
+    const val = parseFloat(el.value) || 0;
+    const percent = ((val - min) / (max - min)) * 100;
+    el.style.setProperty('--percent', percent + '%');
+}
+
+function setup() {
+    pixelDensity(1);
+    createCanvas(600, 800).parent('canvas-container');
+    displayBuffer = createGraphics(600, 800);
+    tempCanvas = createGraphics(600, 800);
+
+    viscositySlider = select('#viscosity');
+    densitySlider = select('#density');
+    zoomSlider = select('#zoom');
+    thresholdSlider = select('#threshold');
+    randomnessSlider = select('#randomness');
+    outlineSlider = select('#outlineWidth');
+    dotColorPicker = select('#dotColor');
+    bgColorPicker = select('#bgColorPicker');
+    styleSelect = select('#styleSelect');
+
+    const inputs = [viscositySlider, densitySlider, zoomSlider, thresholdSlider, randomnessSlider, outlineSlider, dotColorPicker, bgColorPicker, styleSelect];
+    
+    inputs.forEach(input => {
+        if (!input || !input.elt) return;
+        
+        // 初始注入百分比进度
+        if (input.elt.type === 'range') updateSliderFill(input.elt);
+        
+        // 实时同步触发：去除了之前的 Timeout 延迟，直接写入重绘 Flag，实现零延迟跟随
+        input.elt.addEventListener('input', (e) => {
+            isInteracting = true;
+            if (e.target.type === 'range') updateSliderFill(e.target);
+            updateUIDisplay();
+            
+            if (input === thresholdSlider || input === randomnessSlider || input === outlineSlider) needsRecalc = true;
+            else needsRedraw = true;
+        });
+        
+        input.elt.addEventListener('change', (e) => { 
+            isInteracting = false; 
+            if (e.target.type === 'range') updateSliderFill(e.target);
+            if (input === thresholdSlider || input === randomnessSlider || input === outlineSlider) needsRecalc = true;
+            else needsRedraw = true;
+        });
+    });
+
+    select('#imgInput').elt.addEventListener('change', handleFile);
+    initGridPreview();
+    document.getElementById('main-app-container').classList.add('ready');
+
+    if (cvReady) checkAndProcessImage();
+}
+
+function updateUIDisplay() {
+    select('#val-viscosity').html(viscositySlider.value());
+    select('#val-density').html(densitySlider.value());
+    select('#val-zoom').html(zoomSlider.value() + "%");
+    select('#val-threshold').html(thresholdSlider.value());
+    select('#val-randomness').html(randomnessSlider.value());
+    select('#val-outlineWidth').html(outlineSlider.value());
+}
+
+function draw() {
+    // Canvas 循环会无缝捕获 Flag，配合低配运算达到极高的同频响应
+    if (rawSourceImg && (needsRecalc || needsRedraw)) {
+        updateSketch(needsRecalc);
+        needsRecalc = false; needsRedraw = false;
+    }
+    background(204);
+    push();
+    translate(width/2 + globalOffsetX, height/2 + globalOffsetY);
+    fill(bgColorPicker.value());
+    noStroke();
+    rectMode(CENTER);
+    rect(0, 0, 600, 800);
+    if (displayBuffer) {
+        imageMode(CENTER);
+        image(displayBuffer, 0, 0);
+    }
+    pop();
+}
+
+function handleFile(e) {
+    if (e.target.files && e.target.files[0]) {
+        let file = e.target.files[0];
+        let fileName = file.name;
+        
+        let URLObj = window.URL || window.webkitURL;
+        let objectURL = URLObj.createObjectURL(file);
+        
+        let img = new Image();
+        img.onload = () => {
+            try {
+                let tempC = document.createElement('canvas');
+                tempC.width = img.width; 
+                tempC.height = img.height;
+                
+                let ctx;
+                try {
+                    ctx = tempC.getContext('2d', { willReadFrequently: true });
+                } catch(err) {
+                    ctx = tempC.getContext('2d');
+                }
+                if (!ctx) ctx = tempC.getContext('2d');
+
+                ctx.fillStyle = "#FFFFFF"; 
+                ctx.fillRect(0, 0, tempC.width, tempC.height);
+                ctx.drawImage(img, 0, 0);
+                
+                pendingImageCanvas = tempC;
+                
+                loadImage(objectURL, (loaded) => {
+                    rawSourceImg = loaded;
+                    checkAndProcessImage(fileName);
+                    URLObj.revokeObjectURL(objectURL);
+                }, (err) => {
+                    console.error("p5 loadImage failed.", err);
+                    alert("图片预览读取失败。");
+                    URLObj.revokeObjectURL(objectURL);
+                });
+            } catch(err) {
+                console.error("Canvas draw/extraction error:", err);
+                alert("图片底层预处理失败。");
+                URLObj.revokeObjectURL(objectURL);
+            }
+        };
+        img.onerror = () => {
+            console.error("Image standard decode failed.");
+            alert("图片解码失败，请确认格式是否正确或尝试其他图片。");
+            URLObj.revokeObjectURL(objectURL);
+        };
+        img.src = objectURL;
+    }
+}
+
+function checkAndProcessImage(fileName) {
+    if (cvError) {
+        alert("OpenCV加载失败，无法处理图像。请检查网络后刷新页面。");
+        return;
+    }
+    if (!cvReady) {
+        let el = document.getElementById('file-name-display');
+        if (el) el.innerHTML = "正在等待OpenCV就绪...";
+        return;
+    }
+    if (!pendingImageCanvas || !rawSourceImg) return;
+
+    try {
+        if (sourceMat) { sourceMat.delete(); sourceMat = null; }
+        sourceMat = cv.imread(pendingImageCanvas);
+        pendingImageCanvas = null; 
+        
+        let el = document.getElementById('file-name-display');
+        if (el) {
+            if (fileName) {
+                el.innerHTML = fileName.substring(0, 10) + "..";
+            } else if (document.getElementById('imgInput').files[0]) {
+                el.innerHTML = document.getElementById('imgInput').files[0].name.substring(0, 10) + "..";
+            }
+        }
+        document.getElementById('clear-img').style.display = 'block';
+        needsRecalc = true;
+        needsRedraw = true;
+    } catch(err) {
+        console.error("cv.imread OpenCV load exception:", err);
+        alert("OpenCV读取图像异常，请尝试更换图片。");
+    }
+}
+
+function updateSketch(recalc = true) {
+    if (!cvReady || !sourceMat || sourceMat.cols === 0 || sourceMat.rows === 0) return;
+    
+    if (recalc) {
+        let gray = null, resized = null, cropped = null, binary = null, kernel = null, contours = null, hierarchy = null, approx = null, cnt = null;
+        try {
+            let thresh = parseInt(thresholdSlider.value());
+            if (thresh >= 255) thresh = 252;
+            
+            let eps = parseFloat(randomnessSlider.value());
+            let dilateVal = parseInt(outlineSlider.value());
+            
+            gray = new cv.Mat(); cv.cvtColor(sourceMat, gray, cv.COLOR_RGBA2GRAY);
+            resized = new cv.Mat(); 
+            let aspect = 600 / 800;
+            let sw = sourceMat.cols, sh = sourceMat.rows;
+            
+            let cropW = Math.round((sw/sh > aspect) ? sh * aspect : sw);
+            let cropH = Math.round((sw/sh > aspect) ? sh : sw / aspect);
+            
+            let rx = Math.max(0, Math.floor((sw - cropW)/2));
+            let ry = Math.max(0, Math.floor((sh - cropH)/2));
+            let rw = Math.min(sw - rx, Math.floor(cropW));
+            let rh = Math.min(sh - ry, Math.floor(cropH));
+            
+            let rect = new cv.Rect(rx, ry, rw, rh);
+            cropped = gray.roi(rect);
+            cv.resize(cropped, resized, new cv.Size(600, 800));
+            
+            binary = new cv.Mat();
+            cv.threshold(resized, binary, thresh, 255, cv.THRESH_BINARY_INV);
+            
+            if (dilateVal !== 0) {
+                let k = Math.abs(dilateVal);
+                kernel = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(k, k));
+                if (dilateVal > 0) cv.dilate(binary, binary, kernel); else cv.erode(binary, binary, kernel);
+            }
+            
+            contours = new cv.MatVector(); hierarchy = new cv.Mat();
+            cv.findContours(binary, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+            
+            let nextPolygons = [];
+            approx = new cv.Mat();
+            for (let i = 0; i < contours.size(); ++i) {
+                cnt = contours.get(i); 
+                if (cv.contourArea(cnt) < 40) { cnt.delete(); cnt = null; continue; }
+                cv.approxPolyDP(cnt, approx, eps, true);
+                let pts = [];
+                for (let j = 0; j < approx.rows; ++j) {
+                    pts.push({ x: approx.data32S[j * 2], y: approx.data32S[j * 2 + 1] });
+                }
+                nextPolygons.push(pts); 
+                cnt.delete(); cnt = null;
+            }
+            basePolygons = nextPolygons;
+            
+        } catch (err) {
+            console.error("OpenCV Core Processing Error:", err);
+        } finally {
+            if (gray) gray.delete(); if (resized) resized.delete();
+            if (cropped) cropped.delete(); if (binary) binary.delete();
+            if (kernel) kernel.delete(); if (contours) contours.delete();
+            if (hierarchy) hierarchy.delete(); if (approx) approx.delete();
+            if (cnt) cnt.delete();
+        }
+    }
+    
+    renderCore(tempCanvas, 1, false);
+    displayBuffer.drawingContext.globalCompositeOperation = 'copy';
+    displayBuffer.image(tempCanvas, 0, 0);
+    displayBuffer.drawingContext.globalCompositeOperation = 'source-over';
+}
+
+function renderCore(target, scale, isPNG) {
+    if (isPNG) target.clear(); else target.background(bgColorPicker.value());
+    randomSeed(100);
+    let ctx = target.drawingContext;
+    let bSize = parseFloat(viscositySlider.value()) * scale;
+    let dens = parseInt(densitySlider.value());
+    let gScale = parseFloat(zoomSlider.value()) / 100;
+    let rgb = color(dotColorPicker.value());
+    let r = red(rgb), g = green(rgb), b = blue(rgb);
+
+    const interactiveStep = isInteracting ? 3.5 : 1.0; 
+    const pCountMult = isInteracting ? 0.25 : 1.0;
+
+    target.push();
+    target.translate(target.width/2, target.height/2);
+    target.scale(gScale);
+    target.translate(-target.width/2, -target.height/2);
+
+    basePolygons.forEach(poly => {
+        if (poly.length < 3) return;
+        const pts = poly.map(p => ({ x: p.x * scale, y: p.y * scale }));
+        ctx.save(); ctx.beginPath();
+        ctx.moveTo((pts[pts.length-1].x + pts[0].x)/2, (pts[pts.length-1].y + pts[0].y)/2);
+        for (let i = 0; i < pts.length; i++) {
+            let p1 = pts[i], p2 = pts[(i+1)%pts.length];
+            ctx.quadraticCurveTo(p1.x, p1.y, (p1.x+p2.x)/2, (p1.y+p2.y)/2);
+        }
+        ctx.closePath(); ctx.clip();
+
+        const drawGrainLayer = (a, spread, countFactor) => {
+            ctx.fillStyle = "rgba("+r+","+g+","+b+","+a+")"; 
+            ctx.beginPath();
+            let pCount = Math.max(1, Math.ceil(dens * 0.7 * countFactor * pCountMult)); 
+            let stepBase = 5.0 * interactiveStep; 
+            for (let i = 0; i < pts.length; i++) {
+                let p1 = pts[i], p2 = pts[(i+1)%pts.length], p0 = pts[i === 0 ? pts.length - 1 : i - 1];
+                let sx = (p0.x + p1.x) / 2, sy = (p0.y + p1.y) / 2, ex = (p1.x + p2.x) / 2, ey = (p1.y + p2.y) / 2;
+                
+                let dx = ex - sx;
+                let dy = ey - sy;
+                let dist = Math.sqrt(dx * dx + dy * dy);
+                
+                let step = Math.max(0.15, stepBase / dist); 
+                for (let t = 0; t < 1; t += step) {
+                    let t_inv = 1 - t, cx = t_inv * t_inv * sx + 2 * t_inv * t * p1.x + t * t * ex, cy = t_inv * t_inv * sy + 2 * t_inv * t * p1.y + t * t * ey;
+                    for (let j = 0; j < pCount; j++) {
+                        let rr = Math.pow(random(), 1.4) * bSize * spread;
+                        let aa = random() * 6.28;
+                        let vx = cx + Math.cos(aa) * rr, vy = cy + Math.sin(aa) * rr;
+                        let s = (random() * 2.0 + 0.6) * scale;
+                        ctx.moveTo(vx, vy); ctx.arc(vx, vy, s/2, 0, 6.28); 
+                    }
+                }
+            }
+            ctx.fill();
+        };
+
+        drawGrainLayer(0.95, 0.35, 1.5); 
+        drawGrainLayer(0.6, 0.85, 0.8); 
+        drawGrainLayer(0.2, 1.4, 0.4); 
+        
+        ctx.restore();
+    });
+    target.pop();
+}
+
+function getRandomHex() {
+    var hex = Math.floor(Math.random() * 16777215).toString(16);
+    while (hex.length < 6) { hex = '0' + hex; }
+    return '#' + hex;
+}
+
+function randomizeColors() {
+    dotColorPicker.value(getRandomHex());
+    bgColorPicker.value(getRandomHex());
+    needsRedraw = true;
+}
+
+function exportFile(fmt) {
+    if (!rawSourceImg || basePolygons.length === 0) return;
+    if (fmt === 'svg') { exportSVG(); return; }
+    
+    const exportW = 3508, exportH = 4677;
+    const exportScale = exportW / 600;
+    let hiRes = createGraphics(exportW, exportH);
+    isInteracting = false; 
+    renderCore(hiRes, exportScale, fmt === 'png');
+    save(hiRes, "Pattern_" + Date.now() + "." + fmt);
+    hiRes.remove();
+}
+
+function exportSVG() {
+    console.log("Generating precise vector SVG...");
+    const exportW = 3508, exportH = 4677;
+    const scale = exportW / 600;
+    
+    let bSize = parseFloat(viscositySlider.value()) * scale;
+    let dens = parseInt(densitySlider.value());
+    let gScale = parseFloat(zoomSlider.value()) / 100;
+    
+    let rgb = color(dotColorPicker.value());
+    let r = red(rgb), g = green(rgb), b = blue(rgb);
+    let bgHex = bgColorPicker.value();
+    
+    randomSeed(100);
+    
+    let svgStr = `<?xml version="1.0" encoding="UTF-8"?>\n`;
+    svgStr += `<svg xmlns="http://www.w3.org/2000/svg" width="${exportW}" height="${exportH}" viewBox="0 0 ${exportW} ${exportH}">\n`;
+    svgStr += `<rect width="100%" height="100%" fill="${bgHex}" />\n`;
+    svgStr += `<g transform="translate(${exportW/2}, ${exportH/2}) scale(${gScale}) translate(${-exportW/2}, ${-exportH/2})">\n`;
+    
+    let defs = `<defs>\n`;
+    let bodyStr = ``;
+    
+    basePolygons.forEach((poly, polyIdx) => {
+        if (poly.length < 3) return;
+        const pts = poly.map(p => ({ x: p.x * scale, y: p.y * scale }));
+        
+        let pathData = `M ${(pts[pts.length-1].x + pts[0].x)/2} ${(pts[pts.length-1].y + pts[0].y)/2} `;
+        for (let i = 0; i < pts.length; i++) {
+            let p1 = pts[i], p2 = pts[(i+1)%pts.length];
+            pathData += `Q ${p1.x.toFixed(2)} ${p1.y.toFixed(2)} ${((p1.x+p2.x)/2).toFixed(2)} ${((p1.y+p2.y)/2).toFixed(2)} `;
+        }
+        pathData += "Z";
+        
+        let clipId = `clip_${polyIdx}`;
+        defs += `<clipPath id="${clipId}"><path d="${pathData}" /></clipPath>\n`;
+        bodyStr += `<g clip-path="url(#${clipId})">\n`;
+        
+        const addGrainSVG = (a, spread, countFactor) => {
+            let fillCol = `rgba(${r},${g},${b},${a})`;
+            let pCount = Math.max(1, Math.ceil(dens * 0.7 * countFactor * 1.0)); 
+            let stepBase = 5.0 * 1.0; 
+            
+            let circleBuffer = [];
+            for (let i = 0; i < pts.length; i++) {
+                let p1 = pts[i], p2 = pts[(i+1)%pts.length], p0 = pts[i === 0 ? pts.length - 1 : i - 1];
+                let sx = (p0.x + p1.x) / 2, sy = (p0.y + p1.y) / 2, ex = (p1.x + p2.x) / 2, ey = (p1.y + p2.y) / 2;
+                
+                let dx = ex - sx; let dy = ey - sy;
+                let dist = Math.sqrt(dx * dx + dy * dy);
+
+                let step = Math.max(0.15, stepBase / dist); 
+                for (let t = 0; t < 1; t += step) {
+                    let t_inv = 1 - t, cx = t_inv * t_inv * sx + 2 * t_inv * t * p1.x + t * t * ex, cy = t_inv * t_inv * sy + 2 * t_inv * t * p1.y + t * t * ey;
+                    for (let j = 0; j < pCount; j++) {
+                        let rr = Math.pow(random(), 1.4) * bSize * spread;
+                        let aa = random() * 6.28;
+                        let vx = cx + Math.cos(aa) * rr, vy = cy + Math.sin(aa) * rr;
+                        let s = (random() * 2.0 + 0.6) * scale;
+                        circleBuffer.push(`<circle cx="${vx.toFixed(1)}" cy="${vy.toFixed(1)}" r="${(s/2).toFixed(1)}"/>`);
+                    }
+                }
+            }
+            if (circleBuffer.length > 0) bodyStr += `<g fill="${fillCol}">\n${circleBuffer.join("")}\n</g>\n`;
+        };
+        
+        addGrainSVG(0.95, 0.35, 1.5); 
+        addGrainSVG(0.6, 0.85, 0.8); 
+        addGrainSVG(0.2, 1.4, 0.4); 
+        
+        bodyStr += `</g>\n`;
+    });
+    
+    defs += `</defs>\n`;
+    svgStr += defs + bodyStr + `</g>\n</svg>`;
+    
+    let blob;
+    try {
+        blob = new Blob([svgStr], {type: "image/svg+xml;charset=utf-8"});
+    } catch (e) {
+        window.BlobBuilder = window.BlobBuilder || window.WebKitBlobBuilder || window.MozBlobBuilder || window.MSBlobBuilder;
+        if (window.BlobBuilder) {
+            let bb = new BlobBuilder(); bb.append(svgStr); blob = bb.getBlob("image/svg+xml;charset=utf-8");
+        }
+    }
+
+    let URLObj = window.URL || window.webkitURL || window;
+    let url = URLObj.createObjectURL(blob);
+    let a = document.createElement("a");
+    
+    if (typeof a.download !== 'undefined') {
+        a.href = url; a.download = "Pattern_" + Date.now() + ".svg";
+        document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    } else {
+        window.open(url, "_blank");
+    }
+    
+    setTimeout(() => { URLObj.revokeObjectURL(url); }, 1500);
+    console.log("SVG generation completed.");
+}
+
+function clearImage(e) {
+    e.stopPropagation(); document.getElementById('imgInput').value = "";
+    if(sourceMat) { sourceMat.delete(); sourceMat = null; }
+    rawSourceImg = null; basePolygons = [];
+    pendingImageCanvas = null;
+    displayBuffer.background(255); tempCanvas.clear();
+    select('#file-name-display').html("上传素材 (SUPPORT PNG)");
+    document.getElementById('clear-img').style.display = 'none';
+    needsRedraw = true; 
+}
+
+function initGridPreview() {
+    new p5((p) => {
+        let drg = false;
+        p.setup = () => p.createCanvas(300, 180).parent('grid-preview-box');
+        p.mousePressed = () => { if (p.mouseX>0 && p.mouseX<300 && p.mouseY>0 && p.mouseY<180) drg = true; };
+        p.mouseReleased = () => drg = false;
+        p.draw = () => {
+            if (drg) { globalOffsetX += (p.mouseX - p.pmouseX)*2; globalOffsetY += (p.mouseY - p.pmouseY)*4.4; needsRedraw = true; }
+            p.background("#111");
+            if (rawSourceImg) {
+                p.push(); p.imageMode(p.CENTER);
+                let s = (180 / rawSourceImg.height) * 0.8;
+                p.translate(150 + (globalOffsetX * 0.5), 90 + (globalOffsetY * 0.225));
+                p.image(rawSourceImg, 0, 0, rawSourceImg.width * s, rawSourceImg.height * s);
+                p.pop();
+            }
+            p.noStroke(); p.fill("#555"); p.textSize(10); p.textAlign(p.CENTER, p.CENTER);
+            if(!rawSourceImg) p.text("IMAGE PREVIEW", p.width/2, p.height/2);
+        };
+    });
+}
+</script>
+</body>
+</html>
+    
+  </body>
+  
+</html>
